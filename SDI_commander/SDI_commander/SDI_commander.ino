@@ -4,17 +4,21 @@
 
 
 /*
-I used a few devices with no problem using a MEGA 2560 as well as an UNO.
-Sketch was built with Arduino 1.0.4, however I also tested it under 1.0.0
-Place the SDISerial folder in    "<ARDUINO_ROOT>/libraries"
+Some useful commands from 5TE Integrator Guide, page 6:
 
-with the 5TE 
-the WHITE wire is power. 
-   - I hooked it up to the arduino 5v output pin, however you could also connect it to a pin and drive power only when you wanted it
-the RED wire is the DATA_LINE.
-   - you must hook it up to a pin that can process interrupts (see link below)
-   
-the remaining wire must be connected to ground
+aI! 
+where a stands for address, I is for Info
+e.g. 2I! - returns sensor info from sensor with address 2 
+returns, for example: 213DECAGON 5TE   400
+
+aAB!
+where a stands for old address, A is for Address, and B stands for new address
+e.g. 2A4! changes address from 2 to 4
+returns new sensor address: 4
+
+?!
+query for address - if there is more than one sensor this causes bus contention and corrupts data line
+returns address, for example: 4
 */
 
 //in order to recieve data you must choose a pin that supports interupts
