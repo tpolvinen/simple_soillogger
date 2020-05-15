@@ -14,7 +14,8 @@ float dielectricPermittivity = 0.0;
 float electricalConductivity = 0.0;
 float temperature = 0.0;
 
-#define DATALINE_PIN CONTROLLINO_D0  //choose a pin that supports interupts
+#define DATALINE_PIN CONTROLLINO_D0
+// Choose a pin that supports interupts
 // Digital 0 on Controllino = pin 2 on Arduino Mega
 #define INVERTED 1
 
@@ -30,7 +31,6 @@ void setup() {
   delay(3000);
   // startup delay to allow sensor to powerup
   // and output its DDI serial string
-  //  addressArraySize = sizeof(addressArray) / sizeof(addressArray[0]);
 }
 
 //------------------------------------------------------------------------------
@@ -45,9 +45,9 @@ void loop() {
     Serial.println(response != NULL && response[0] != '\0' ? response : "No Response!");
 
     if (response != NULL && response[0] != '\0') {
-      strcpy(tempMeasurement, response); // tempMeasurement = tempChars  and  response = receivedChars
+      strcpy(tempMeasurement, response);
       // this temporary copy is necessary to protect the original data
-      //   because strtok() used in parseData() replaces the commas with \0
+      // because strtok() used in parseData() replaces the commas with \0
 
       parseData();
       showParsedData();
@@ -68,7 +68,7 @@ char* get_measurement(int16_t waitMs, int8_t address) {
   Serial.print("Sensor query M: ");
   Serial.println(service_request_query_M);
   
-  char* service_request = sdi_serial_connection.sdi_query(service_request_query_M, waitMs); //"M!10013", waitMs);
+  char* service_request = sdi_serial_connection.sdi_query(service_request_query_M, waitMs);
   // the time  above is to wait for service_request_complete
 
   char* service_request_complete = sdi_serial_connection.wait_for_response(waitMs);
@@ -80,7 +80,7 @@ char* get_measurement(int16_t waitMs, int8_t address) {
   Serial.print("Sensor query D0: ");
   Serial.println(service_request_query_D0);
 
-  return sdi_serial_connection.sdi_query(service_request_query_D0, waitMs); //"?D0!", waitMs);
+  return sdi_serial_connection.sdi_query(service_request_query_D0, waitMs);
 
 }
 
