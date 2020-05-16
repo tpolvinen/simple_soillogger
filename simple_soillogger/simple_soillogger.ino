@@ -26,11 +26,16 @@ void setup() {
   sdi_serial_connection.begin();
   Serial.begin(9600);
   delay(500);
-  Serial.println("OK INITIALIZED");
+
+  Serial.println();
+  Serial.println("------------------------------------------------------------");
+  Serial.println("            Simple Soil Logger starting!");
+  Serial.println("------------------------------------------------------------");
+  Serial.println();
+
   delay(3000);
   // startup delay to allow sensor to powerup
   // and output its DDI serial string
-  //  addressArraySize = sizeof(addressArray) / sizeof(addressArray[0]);
 }
 
 //------------------------------------------------------------------------------
@@ -40,7 +45,10 @@ void loop() {
   for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
     int8_t sensorAddress = addressArray[i];
 
+    Serial.println("------------------------------------------------------------");
+
     response = get_measurement(responseWaitMs, sensorAddress);
+
     Serial.print("Raw sensor response: ");
     Serial.println(response != NULL && response[0] != '\0' ? response : "No Response!");
 
@@ -53,6 +61,15 @@ void loop() {
       showParsedData();
       delay(500);
     }
+
+    dielectricPermittivity = 0.0; // clean previous measurements
+    electricalConductivity = 0.0;
+    temperature = 0.0;
+
+    Serial.println("------------------------------------------------------------");
+    Serial.println();
+    Serial.println();
+
     delay(500);
   }
 }
@@ -60,27 +77,26 @@ void loop() {
 //------------------------------------------------------------------------------
 
 char* get_measurement(int16_t waitMs, int8_t address) {
-  
+
   char service_request_query_M[10];
-  sprintf(service_request_query_M, "%iM!10013",address);
-  
-  Serial.println("------------------------------------------------------------");
+  sprintf(service_request_query_M, "%iM!10013", address);
+
   Serial.print("Sensor query M: ");
   Serial.println(service_request_query_M);
-  
-  char* service_request = sdi_serial_connection.sdi_query(service_request_query_M, waitMs); //"M!10013", waitMs);
+
+  char* service_request = sdi_serial_connection.sdi_query(service_request_query_M, waitMs);
   // the time  above is to wait for service_request_complete
 
   char* service_request_complete = sdi_serial_connection.wait_for_response(waitMs);
   // will return once it gets a response
 
   char service_request_query_D0[10];
-  sprintf(service_request_query_D0, "%iD0!",address);
-  
+  sprintf(service_request_query_D0, "%iD0!", address);
+
   Serial.print("Sensor query D0: ");
   Serial.println(service_request_query_D0);
 
-  return sdi_serial_connection.sdi_query(service_request_query_D0, waitMs); //"?D0!", waitMs);
+  return sdi_serial_connection.sdi_query(service_request_query_D0, waitMs);
 
 }
 
@@ -118,8 +134,4 @@ void showParsedData() {
   Serial.println(electricalConductivity, 3);
   Serial.print("temperature = ");
   Serial.println(temperature, 2);
-  Serial.println("------------------------------------------------------------");
-
-  Serial.println();
-  Serial.println();
 }
