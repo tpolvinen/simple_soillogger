@@ -1,3 +1,11 @@
+#include <MinimumSerial.h>
+#include <BlockDriver.h>
+#include <FreeStack.h>
+#include <SdFat.h>
+#include <sdios.h>
+#include <SysCall.h>
+#include <SdFatConfig.h>
+
 //#define DEBUG
 #include <DebugMacros.h> // Example: DPRINTLN(x,HEX); 
 
@@ -5,6 +13,7 @@
 #include <Controllino.h>
 #include <SDISerial.h>
 #include <avr/wdt.h>
+
 
 const int8_t addressArray[6] = {0, 1, 2, 3, 4, 5};
 
@@ -25,6 +34,30 @@ float temperature = 0.0;
 
 SDISerial sdi_serial_connection(DATALINE_PIN, INVERTED);
 
+SdFat sd1;
+const uint8_t SD1_CS = 53;  // chip select for sd1
+
+SdFile measurementfile1;
+SdFile logfile1;
+
+char logMsg[100];
+char measurementfileHeader[100]; // space for YYYY-MM-DDThh:mm:ss,0-0,etc. plus the null char terminator
+char dateAndTimeData[20]; // space for YYYY-MM-DDTHH-MM-SS, plus the null char terminator
+char measurementfileName[10]; // space for MM-DD.csv, plus the null char terminator
+char logfileName[13]; // space for MM-DDlog.csv, plus the null char terminator
+char dirName[7]; // space for /YY-MM, plus the null char terminator
+
+uint16_t thisYear;
+int8_t thisMonth, thisDay, thisHour, thisMinute, thisSecond;
+
+//------------------------------------------------------------------------------
+// print error msg, any SD error codes, and halt.
+// store messages in flash
+#define errorExit(msg) errorHalt(F(msg))
+#define initError(msg) initErrorHalt(F(msg))
+//------------------------------------------------------------------------------
+
+
 //------------------------------------------------------------------------------
 
 void setup() {
@@ -35,6 +68,11 @@ void setup() {
 
   sdi_serial_connection.begin();
   Serial.begin(9600);
+
+  Controllino_RTC_init(0);
+  // Controllino_SetTimeDate(16, 5, 5, 20, 20, 41, 00); // set initial values to the RTC chip
+  // (Day of the month, Day of the week, Month, Year, Hour, Minute, Second)
+
   delay(500);
 
   DPRINTLN();
@@ -54,6 +92,8 @@ void setup() {
 void loop() {
 
   wdt_reset();
+
+  getDateAndTime();
 
   for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
 
@@ -89,7 +129,6 @@ void loop() {
 
     delay(500);
   }
-  Serial.println();
 }
 
 //------------------------------------------------------------------------------
@@ -154,7 +193,26 @@ void showParsedData() {
   DPRINTLN(temperature, 2);
 
 
-  Serial.print(dielectricPermittivity);
-  Serial.print("\t");
+  //Serial.print(dielectricPermittivity);
+  //Serial.print("\t");
 
+}
+
+//------------------------------------------------------------------------------
+
+void getDateAndTime() {
+
+  thisYear = Controllino_GetYear(); thisYear = thisYear + 2000;
+  thisMonth = Controllino_GetMonth();
+  thisDay = Controllino_GetDay();
+  thisHour = Controllino_GetHour();
+  thisMinute = Controllino_GetMinute();
+  thisSecond = Controllino_GetSecond();
+
+  sprintf(dateAndTimeData, ("%04d-%02d-%02dT%02d:%02d:%02d"), thisYear, thisMonth, thisDay, thisHour, thisMinute, thisSecond);
+  sprintf(measurementfileName, ("%02d-%02d.csv"), thisMonth, thisDay);
+  sprintf(logfileName, ("%02d-%02dlog.csv"), thisMonth, thisDay);
+  sprintf(dirName, ("/%02d-%02d"), thisYear, thisMonth);
+
+  Serial.println(dateAndTimeData);
 }
