@@ -1,3 +1,6 @@
+//#define DEBUG
+#include <DebugMacros.h> // Example: DPRINTLN(x,HEX); 
+
 #include <SPI.h>
 #include <Controllino.h>
 #include <SDISerial.h>
@@ -28,11 +31,12 @@ void setup() {
   Serial.begin(9600);
   delay(500);
 
-  Serial.println();
-  Serial.println("------------------------------------------------------------");
-  Serial.println("            Simple Soil Logger starting!");
-  Serial.println("------------------------------------------------------------");
-  Serial.println();
+  DPRINTLN();
+  DPRINTLN("------------------------------------------------------------");
+  DPRINTLN("            Simple Soil Logger starting!");
+  DPRINTLN("------------------------------------------------------------");
+  DPRINTLN("           DEBUG PRINTING TO SERIAL IS ON!");
+  DPRINTLN();
 
   delay(3000);
   // startup delay to allow sensor to powerup
@@ -46,12 +50,12 @@ void loop() {
   for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
     int8_t sensorAddress = addressArray[i];
 
-    Serial.println("------------------------------------------------------------");
+    DPRINTLN("------------------------------------------------------------");
 
     response = get_measurement(responseWaitMs, sensorAddress);
 
-    Serial.print("Raw sensor response: ");
-    Serial.println(response != NULL && response[0] != '\0' ? response : "No Response!");
+    DPRINT("Raw sensor response: ");
+    DPRINTLN(response != NULL && response[0] != '\0' ? response : "No Response!");
 
     if (response != NULL && response[0] != '\0') {
       strcpy(tempMeasurement, response);
@@ -61,19 +65,20 @@ void loop() {
       parseData();
       showParsedData();
       delay(500);
-      
+
     } else {
       dielectricPermittivity = 0.0; // clean previous measurements
       electricalConductivity = 0.0;
       temperature = 0.0;
     }
 
-    Serial.println("------------------------------------------------------------");
-    Serial.println();
-    Serial.println();
+    DPRINTLN("------------------------------------------------------------");
+    DPRINTLN();
+    DPRINTLN();
 
     delay(500);
   }
+  Serial.println();
 }
 
 //------------------------------------------------------------------------------
@@ -83,8 +88,8 @@ char* get_measurement(int16_t waitMs, int8_t address) {
   char service_request_query_M[10];
   sprintf(service_request_query_M, "%iM!10013", address);
 
-  Serial.print("Sensor query M: ");
-  Serial.println(service_request_query_M);
+  DPRINT("Sensor query M: ");
+  DPRINTLN(service_request_query_M);
 
   char* service_request = sdi_serial_connection.sdi_query(service_request_query_M, waitMs);
   // the time  above is to wait for service_request_complete
@@ -95,8 +100,8 @@ char* get_measurement(int16_t waitMs, int8_t address) {
   char service_request_query_D0[10];
   sprintf(service_request_query_D0, "%iD0!", address);
 
-  Serial.print("Sensor query D0: ");
-  Serial.println(service_request_query_D0);
+  DPRINT("Sensor query D0: ");
+  DPRINTLN(service_request_query_D0);
 
   return sdi_serial_connection.sdi_query(service_request_query_D0, waitMs);
 
@@ -125,15 +130,20 @@ void parseData() {      // split the data into its parts
 //------------------------------------------------------------------------------
 
 void showParsedData() {
-  Serial.println();
-  Serial.println("Sensor response in variables:");
-  Serial.println("------------------------------");
-  Serial.print("address = ");
-  Serial.println(address);
-  Serial.print("dielectricPermittivity = ");
-  Serial.println(dielectricPermittivity, 3);
-  Serial.print("electricalConductivity = ");
-  Serial.println(electricalConductivity, 3);
-  Serial.print("temperature = ");
-  Serial.println(temperature, 2);
+  DPRINTLN();
+  DPRINTLN("Sensor response in variables:");
+  DPRINTLN("------------------------------");
+  DPRINT("address = ");
+  DPRINTLN(address);
+  DPRINT("dielectricPermittivity = ");
+  DPRINTLN(dielectricPermittivity, 3);
+  DPRINT("electricalConductivity = ");
+  DPRINTLN(electricalConductivity, 3);
+  DPRINT("temperature = ");
+  DPRINTLN(temperature, 2);
+
+
+  Serial.print(dielectricPermittivity, 3);
+  Serial.print("\t");
+
 }
