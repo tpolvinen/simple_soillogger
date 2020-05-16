@@ -60,11 +60,12 @@ void loop() {
       parseData();
       showParsedData();
       delay(500);
+      
+    } else {
+      dielectricPermittivity = 0.0; // clean previous measurements
+      electricalConductivity = 0.0;
+      temperature = 0.0;
     }
-
-    dielectricPermittivity = 0.0; // clean previous measurements
-    electricalConductivity = 0.0;
-    temperature = 0.0;
 
     Serial.println("------------------------------------------------------------");
     Serial.println();
