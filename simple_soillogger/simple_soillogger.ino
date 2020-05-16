@@ -4,6 +4,7 @@
 #include <SPI.h>
 #include <Controllino.h>
 #include <SDISerial.h>
+#include <avr/wdt.h>
 
 const int8_t addressArray[6] = {0, 1, 2, 3, 4, 5};
 
@@ -27,6 +28,11 @@ SDISerial sdi_serial_connection(DATALINE_PIN, INVERTED);
 //------------------------------------------------------------------------------
 
 void setup() {
+
+  wdt_disable();  // Disable the watchdog and wait for more than 2 seconds
+  delay(3000);  // With this the Arduino doesn't keep resetting infinitely in case of wrong configuration
+  wdt_enable(WDTO_8S);
+
   sdi_serial_connection.begin();
   Serial.begin(9600);
   delay(500);
@@ -47,7 +53,12 @@ void setup() {
 
 void loop() {
 
+  wdt_reset();
+
   for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
+
+    wdt_reset();
+
     int8_t sensorAddress = addressArray[i];
 
     DPRINTLN("------------------------------------------------------------");
@@ -143,7 +154,7 @@ void showParsedData() {
   DPRINTLN(temperature, 2);
 
 
-  Serial.print(dielectricPermittivity, 3);
+  Serial.print(dielectricPermittivity);
   Serial.print("\t");
 
 }
