@@ -1,4 +1,4 @@
-#define DEBUG
+//#define DEBUG
 #include <DebugMacros.h> // Example: DPRINTLN(x,HEX);
 
 #include <MinimumSerial.h>
@@ -27,7 +27,7 @@ float dielectricPermittivity = 0.0;
 float electricalConductivity = 0.0;
 float temperature = 0.0;
 char addressArr[2]; // space for single digit address, plus the null char terminator
-char delimiterArr[2];
+char delimiterArr[2] = {','};
 char dielectricPermittivityArr[6]; // space for 12.34, plus the null char terminator
 char electricalConductivityArr[6]; // space for 12.34, plus the null char terminator
 char temperatureArr[6]; // space for +12.3, plus the null char terminator
@@ -39,19 +39,19 @@ char temperatureArr[6]; // space for +12.3, plus the null char terminator
 
 SDISerial sdi_serial_connection(DATALINE_PIN, INVERTED);
 
-SdFat sd1;
-const uint8_t SD1_CS = 53;  // chip select for sd1
+//SdFat sd1;
+//const uint8_t SD1_CS = 53;  // chip select for sd1
 
-SdFile measurementfile1;
-SdFile logfile1;
+//SdFile measurementfile1;
+//SdFile logfile1;
 
-char logMsg[100];
-char measurementfileHeader[152]; // space for YYYY-MM-DDThh:mm:ss,0-0,etc. plus the null char terminator
+//char logMsg[100];
+//char measurementfileHeader[152]; // space for YYYY-MM-DDThh:mm:ss,0-0,etc. plus the null char terminator
 char measurementfileLine[140];
 char dateAndTimeData[20]; // space for YYYY-MM-DDTHH-MM-SS, plus the null char terminator
-char measurementfileName[10]; // space for MM-DD.csv, plus the null char terminator
-char logfileName[13]; // space for MM-DDlog.csv, plus the null char terminator
-char dirName[7]; // space for /YY-MM, plus the null char terminator
+//char measurementfileName[10]; // space for MM-DD.csv, plus the null char terminator
+//char logfileName[13]; // space for MM-DDlog.csv, plus the null char terminator
+//char dirName[7]; // space for /YY-MM, plus the null char terminator
 
 uint16_t thisYear;
 int8_t thisMonth, thisDay, thisHour, thisMinute, thisSecond;
@@ -88,8 +88,6 @@ void setup() {
   DPRINTLN("           DEBUG PRINTING TO SERIAL IS ON!");
   DPRINTLN();
 
-  strcpy(delimiterArr, ",");
-
   delay(3000);
   // startup delay to allow sensor to powerup
   // and output its DDI serial string
@@ -102,7 +100,7 @@ void loop() {
   wdt_reset();
 
   getDateAndTime();
-
+  
   strcpy(measurementfileLine, dateAndTimeData);
   strcat(measurementfileLine, delimiterArr);
 
@@ -132,18 +130,27 @@ void loop() {
 
       concatDataChar();
 
-      //      showParseDataNum();
-      showParseDataChar();
+      // showParseDataNum();
+      // showParseDataChar();
 
       delay(500);
 
     } else {
-      dielectricPermittivity = 0.0; // clean previous measurements
+
+      // clean previous measurements
+      dielectricPermittivity = 0.0;
       electricalConductivity = 0.0;
       temperature = 0.0;
+      parseDataNum();
+
+      // Mark data points as not there
+      strcpy(addressArr, "N/A");
+      strcpy(dielectricPermittivityArr, "N/A");
+      strcpy(electricalConductivityArr, "N/A");
+      strcpy(temperatureArr, "N/A");
+      concatDataChar();
+      
     }
-
-
 
     DPRINTLN("------------------------------------------------------------");
     DPRINTLN();
@@ -152,10 +159,9 @@ void loop() {
     delay(500);
   }
 
-  sd1write();
+//  sd1write();
 
-  
-  Serial.println();
+  Serial.println(measurementfileLine);
 }
 
 //------------------------------------------------------------------------------
@@ -240,9 +246,8 @@ void concatDataChar() {
   DPRINTLN("Sensor response in concatenated array");
   DPRINTLN("-------------------------------------");
   DPRINTLN(measurementfileLine);
-  DPRINTLN("------------------------------");
+  DPRINTLN("-------------------------------------");
   DPRINTLN();
-
 }
 
 //------------------------------------------------------------------------------
@@ -259,11 +264,11 @@ void showParseDataNum() {
   DPRINTLN(electricalConductivity, 3);
   DPRINT("temperature = ");
   DPRINTLN(temperature, 2);
+  DPRINTLN("------------------------------");
 
-
+  // for serial plotter:
   // Serial.print(dielectricPermittivity);
   // Serial.print("\t");
-
 }
 
 //------------------------------------------------------------------------------
@@ -280,6 +285,7 @@ void showParseDataChar() {
   DPRINTLN(electricalConductivityArr);
   DPRINT("temperature = ");
   DPRINTLN(temperatureArr);
+  DPRINTLN("------------------------------");
 }
 
 //------------------------------------------------------------------------------
@@ -300,9 +306,7 @@ void getDateAndTime() {
   thisSecond = Controllino_GetSecond();
 
   sprintf(dateAndTimeData, ("%04d-%02d-%02dT%02d:%02d:%02d"), thisYear, thisMonth, thisDay, thisHour, thisMinute, thisSecond);
-  sprintf(measurementfileName, ("%02d-%02d.csv"), thisMonth, thisDay);
-  sprintf(logfileName, ("%02d-%02dlog.csv"), thisMonth, thisDay);
-  sprintf(dirName, ("/%02d-%02d"), thisYear, thisMonth);
-
-  DPRINTLN(dateAndTimeData);
+//  sprintf(measurementfileName, ("%02d-%02d.csv"), thisMonth, thisDay);
+//  sprintf(logfileName, ("%02d-%02dlog.csv"), thisMonth, thisDay);
+//  sprintf(dirName, ("/%02d-%02d"), thisYear, thisMonth);
 }
