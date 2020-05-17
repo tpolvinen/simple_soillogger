@@ -1,3 +1,6 @@
+#define DEBUG
+#include <DebugMacros.h> // Example: DPRINTLN(x,HEX);
+
 #include <MinimumSerial.h>
 #include <BlockDriver.h>
 #include <FreeStack.h>
@@ -5,9 +8,6 @@
 #include <sdios.h>
 #include <SysCall.h>
 #include <SdFatConfig.h>
-
-//#define DEBUG
-#include <DebugMacros.h> // Example: DPRINTLN(x,HEX); 
 
 #include <SPI.h>
 #include <Controllino.h>
@@ -20,12 +20,17 @@ const int8_t addressArray[6] = {0, 1, 2, 3, 4, 5};
 const int16_t responseWaitMs = 1000;
 
 char* response;
-char tempMeasurement[50];        // temporary array for use when parsing
+char tempMeasurement[19];        // temporary array for use when parsing
 
 int8_t address = 0;
 float dielectricPermittivity = 0.0;
 float electricalConductivity = 0.0;
 float temperature = 0.0;
+char addressArr[2]; // space for single digit address, plus the null char terminator
+char delimiterArr[2];
+char dielectricPermittivityArr[6]; // space for 12.34, plus the null char terminator
+char electricalConductivityArr[6]; // space for 12.34, plus the null char terminator
+char temperatureArr[6]; // space for +12.3, plus the null char terminator
 
 #define DATALINE_PIN CONTROLLINO_D0
 // Choose a pin that supports interupts
@@ -41,7 +46,8 @@ SdFile measurementfile1;
 SdFile logfile1;
 
 char logMsg[100];
-char measurementfileHeader[100]; // space for YYYY-MM-DDThh:mm:ss,0-0,etc. plus the null char terminator
+char measurementfileHeader[152]; // space for YYYY-MM-DDThh:mm:ss,0-0,etc. plus the null char terminator
+char measurementfileLine[140];
 char dateAndTimeData[20]; // space for YYYY-MM-DDTHH-MM-SS, plus the null char terminator
 char measurementfileName[10]; // space for MM-DD.csv, plus the null char terminator
 char logfileName[13]; // space for MM-DDlog.csv, plus the null char terminator
@@ -82,6 +88,8 @@ void setup() {
   DPRINTLN("           DEBUG PRINTING TO SERIAL IS ON!");
   DPRINTLN();
 
+  strcpy(delimiterArr, ",");
+
   delay(3000);
   // startup delay to allow sensor to powerup
   // and output its DDI serial string
@@ -95,13 +103,16 @@ void loop() {
 
   getDateAndTime();
 
+  strcpy(measurementfileLine, dateAndTimeData);
+  strcat(measurementfileLine, delimiterArr);
+
   for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
 
     wdt_reset();
 
-    int8_t sensorAddress = addressArray[i];
-
     DPRINTLN("------------------------------------------------------------");
+
+    int8_t sensorAddress = addressArray[i];
 
     response = get_measurement(responseWaitMs, sensorAddress);
 
@@ -109,12 +120,21 @@ void loop() {
     DPRINTLN(response != NULL && response[0] != '\0' ? response : "No Response!");
 
     if (response != NULL && response[0] != '\0') {
-      strcpy(tempMeasurement, response);
+      //      strcpy(tempMeasurement, response);
       // this temporary copy is necessary to protect the original data
-      // because strtok() used in parseData() replaces the commas with \0
+      // because strtok() used in parseDataNum() replaces the commas with \0
+      //      parseDataNum();
 
-      parseData();
-      showParsedData();
+      strcpy(tempMeasurement, response);
+      // this is necessary to make a fresh disposable working copy
+      // for parseDataChar() to take apart
+      parseDataChar();
+
+      concatDataChar();
+
+      //      showParseDataNum();
+      showParseDataChar();
+
       delay(500);
 
     } else {
@@ -123,12 +143,19 @@ void loop() {
       temperature = 0.0;
     }
 
+
+
     DPRINTLN("------------------------------------------------------------");
     DPRINTLN();
     DPRINTLN();
 
     delay(500);
   }
+
+  sd1write();
+
+  
+  Serial.println();
 }
 
 //------------------------------------------------------------------------------
@@ -159,7 +186,7 @@ char* get_measurement(int16_t waitMs, int8_t address) {
 
 //------------------------------------------------------------------------------
 
-void parseData() {      // split the data into its parts
+void parseDataNum() {      // split the data into numbers
 
   char * strtokIndx; // this is used by strtok() as an index
 
@@ -179,7 +206,48 @@ void parseData() {      // split the data into its parts
 
 //------------------------------------------------------------------------------
 
-void showParsedData() {
+void parseDataChar() {      // split the data into char arrays
+
+  char * strtokIndx; // this is used by strtok() as an index
+
+  strtokIndx = strtok(tempMeasurement, "+");     // get the first part - the address
+  strcpy(addressArr, strtokIndx); // copy it to char array
+
+  strtokIndx = strtok(NULL, "+"); // this continues where the previous call left off
+  strcpy(dielectricPermittivityArr, strtokIndx); // copy it to char array
+
+  strtokIndx = strtok(NULL, "+");
+  strcpy(electricalConductivityArr, strtokIndx); // copy it to char array
+
+  strtokIndx = strtok(NULL, "+-");
+  strcpy(temperatureArr, strtokIndx); // copy it to char array
+
+}
+
+//------------------------------------------------------------------------------
+
+void concatDataChar() {
+
+  strcat(measurementfileLine, addressArr);
+  strcat(measurementfileLine, delimiterArr);
+  strcat(measurementfileLine, dielectricPermittivityArr);
+  strcat(measurementfileLine, delimiterArr);
+  strcat(measurementfileLine, electricalConductivityArr);
+  strcat(measurementfileLine, delimiterArr);
+  strcat(measurementfileLine, temperatureArr);
+  strcat(measurementfileLine, delimiterArr);
+  DPRINTLN();
+  DPRINTLN("Sensor response in concatenated array");
+  DPRINTLN("-------------------------------------");
+  DPRINTLN(measurementfileLine);
+  DPRINTLN("------------------------------");
+  DPRINTLN();
+
+}
+
+//------------------------------------------------------------------------------
+
+void showParseDataNum() {
   DPRINTLN();
   DPRINTLN("Sensor response in variables:");
   DPRINTLN("------------------------------");
@@ -193,8 +261,30 @@ void showParsedData() {
   DPRINTLN(temperature, 2);
 
 
-  //Serial.print(dielectricPermittivity);
-  //Serial.print("\t");
+  // Serial.print(dielectricPermittivity);
+  // Serial.print("\t");
+
+}
+
+//------------------------------------------------------------------------------
+
+void showParseDataChar() {
+  DPRINTLN();
+  DPRINTLN("Sensor response in char arrays:");
+  DPRINTLN("------------------------------");
+  DPRINT("address = ");
+  DPRINTLN(addressArr);
+  DPRINT("dielectricPermittivity = ");
+  DPRINTLN(dielectricPermittivityArr);
+  DPRINT("electricalConductivity = ");
+  DPRINTLN(electricalConductivityArr);
+  DPRINT("temperature = ");
+  DPRINTLN(temperatureArr);
+}
+
+//------------------------------------------------------------------------------
+
+void sd1write() {
 
 }
 
@@ -214,5 +304,5 @@ void getDateAndTime() {
   sprintf(logfileName, ("%02d-%02dlog.csv"), thisMonth, thisDay);
   sprintf(dirName, ("/%02d-%02d"), thisYear, thisMonth);
 
-  Serial.println(dateAndTimeData);
+  DPRINTLN(dateAndTimeData);
 }
