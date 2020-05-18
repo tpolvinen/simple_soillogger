@@ -1,4 +1,4 @@
-//#define DEBUG
+#define DEBUG
 #include <DebugMacros.h> // Example: DPRINTLN(x,HEX);
 
 #include <MinimumSerial.h>
@@ -14,11 +14,8 @@
 #include <SDISerial.h>
 #include <avr/wdt.h>
 
-
 const int8_t addressArray[6] = {0, 1, 2, 3, 4, 5};
-
 const int16_t responseWaitMs = 1000;
-
 char* response;
 char tempMeasurement[19];        // temporary array for use when parsing
 
@@ -39,22 +36,29 @@ char temperatureArr[6]; // space for +12.3, plus the null char terminator
 
 SDISerial sdi_serial_connection(DATALINE_PIN, INVERTED);
 
-//SdFat sd1;
-//const uint8_t SD1_CS = 53;  // chip select for sd1
-
-//SdFile measurementfile1;
-//SdFile logfile1;
-
-//char logMsg[100];
-//char measurementfileHeader[152]; // space for YYYY-MM-DDThh:mm:ss,0-0,etc. plus the null char terminator
-char measurementfileLine[140];
 char dateAndTimeData[20]; // space for YYYY-MM-DDTHH-MM-SS, plus the null char terminator
-//char measurementfileName[10]; // space for MM-DD.csv, plus the null char terminator
-//char logfileName[13]; // space for MM-DDlog.csv, plus the null char terminator
-//char dirName[7]; // space for /YY-MM, plus the null char terminator
 
-uint16_t thisYear;
-int8_t thisMonth, thisDay, thisHour, thisMinute, thisSecond;
+SdFat sdFat;
+const uint8_t SD_CS = 53;  // chip select for sd1
+
+//SdFile sdFile;
+SdFile sdMeasurementFile;
+SdFile sdLogFile;
+
+unsigned long startsdCardInitializeDelay = 0; // to mark the start of current sdCardInitializeDelay
+const int16_t sdCardInitializeDelay = 200; // in milliseconds, interval between attempts to read sd card if removed - remember watchdog timer settings!
+
+bool headerLine = false;
+
+char sdDataLine[160];
+
+char sdMeasurementFileName[10]; // space for MM-DD.csv, plus the null char terminator
+char sdLogFileName[13]; // space for MM-DDlog.csv, plus the null char terminator
+
+char sdMeasurementDirName[7]; // space for /YY-MM, plus the null char terminator
+char sdLogDirName[4] = {"log"};
+
+
 
 //------------------------------------------------------------------------------
 // print error msg, any SD error codes, and halt.
@@ -63,6 +67,24 @@ int8_t thisMonth, thisDay, thisHour, thisMinute, thisSecond;
 #define initError(msg) initErrorHalt(F(msg))
 //------------------------------------------------------------------------------
 
+void getDateAndTime() {
+
+  uint16_t thisYear;
+  int8_t thisMonth, thisDay, thisHour, thisMinute, thisSecond;
+
+  thisYear = Controllino_GetYear(); thisYear = thisYear + 2000;
+  thisMonth = Controllino_GetMonth();
+  thisDay = Controllino_GetDay();
+  thisHour = Controllino_GetHour();
+  thisMinute = Controllino_GetMinute();
+  thisSecond = Controllino_GetSecond();
+
+  sprintf(dateAndTimeData, ("%04d-%02d-%02dT%02d:%02d:%02d"), thisYear, thisMonth, thisDay, thisHour, thisMinute, thisSecond);
+  sprintf(sdMeasurementFileName, ("%02d-%02d.csv"), thisMonth, thisDay);
+  sprintf(sdLogFileName, ("%02d-%02dlog.csv"), thisMonth, thisDay);
+  sprintf(sdMeasurementDirName, ("/%02d-%02d"), thisYear, thisMonth);
+
+}
 
 //------------------------------------------------------------------------------
 
@@ -74,6 +96,9 @@ void setup() {
 
   sdi_serial_connection.begin();
   Serial.begin(9600);
+  while (!Serial) {
+    delay(10);
+  }
 
   Controllino_RTC_init(0);
   // Controllino_SetTimeDate(16, 5, 5, 20, 20, 41, 00); // set initial values to the RTC chip
@@ -81,12 +106,47 @@ void setup() {
 
   delay(500);
 
+  getDateAndTime();
+
+
   DPRINTLN();
   DPRINTLN("------------------------------------------------------------");
   DPRINTLN("            Simple Soil Logger starting!");
   DPRINTLN("------------------------------------------------------------");
   DPRINTLN("           DEBUG PRINTING TO SERIAL IS ON!");
-  DPRINTLN();
+  DPRINT("                 ");
+  DPRINTLN(dateAndTimeData);
+
+  // writing header line to data file
+  sprintf(sdDataLine, "Date and Time,");
+  for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
+    char headers[20] = {"address,DeP,EC,temp"};
+    strcat(sdDataLine, headers);
+    if (i < (sizeof addressArray / sizeof addressArray[0] - 1)) {
+      strcat(sdDataLine, delimiterArr);
+    }
+  }
+  headerLine = true;
+  sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, dateAndTimeData, sdDataLine, headerLine);
+
+  strcpy(sdDataLine, dateAndTimeData);
+  strcat(sdDataLine, delimiterArr);
+  strcat(sdDataLine, "Hello world. I start now,Sensor addresses are,");
+
+  for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
+    char charAddress[2];
+    itoa(addressArray[i], charAddress, 10);
+    strcat(sdDataLine, charAddress);
+    if (i < (sizeof addressArray / sizeof addressArray[0] - 1)) {
+      strcat(sdDataLine, delimiterArr);
+    }
+  }
+
+  DPRINTLN(sdDataLine);
+  //sdwriteLog();
+
+  headerLine = false;
+  sdWrite(sdFat, sdLogDirName, sdLogFile, sdLogFileName, dateAndTimeData, sdDataLine, headerLine);
 
   delay(3000);
   // startup delay to allow sensor to powerup
@@ -100,9 +160,9 @@ void loop() {
   wdt_reset();
 
   getDateAndTime();
-  
-  strcpy(measurementfileLine, dateAndTimeData);
-  strcat(measurementfileLine, delimiterArr);
+
+  strcpy(sdDataLine, dateAndTimeData);
+  strcat(sdDataLine, delimiterArr);
 
   for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
 
@@ -124,8 +184,7 @@ void loop() {
       //      parseDataNum();
 
       strcpy(tempMeasurement, response);
-      // this is necessary to make a fresh disposable working copy
-      // for parseDataChar() to take apart
+      // make a fresh disposable working copy for parseDataChar() to take apart
       parseDataChar();
 
       concatDataChar();
@@ -149,7 +208,7 @@ void loop() {
       strcpy(electricalConductivityArr, "N/A");
       strcpy(temperatureArr, "N/A");
       concatDataChar();
-      
+
     }
 
     DPRINTLN("------------------------------------------------------------");
@@ -159,9 +218,10 @@ void loop() {
     delay(500);
   }
 
-//  sd1write();
+  headerLine = false;
+  sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, dateAndTimeData, sdDataLine, headerLine);
 
-  Serial.println(measurementfileLine);
+  Serial.println(sdDataLine);
 }
 
 //------------------------------------------------------------------------------
@@ -234,18 +294,18 @@ void parseDataChar() {      // split the data into char arrays
 
 void concatDataChar() {
 
-  strcat(measurementfileLine, addressArr);
-  strcat(measurementfileLine, delimiterArr);
-  strcat(measurementfileLine, dielectricPermittivityArr);
-  strcat(measurementfileLine, delimiterArr);
-  strcat(measurementfileLine, electricalConductivityArr);
-  strcat(measurementfileLine, delimiterArr);
-  strcat(measurementfileLine, temperatureArr);
-  strcat(measurementfileLine, delimiterArr);
+  strcat(sdDataLine, addressArr);
+  strcat(sdDataLine, delimiterArr);
+  strcat(sdDataLine, dielectricPermittivityArr);
+  strcat(sdDataLine, delimiterArr);
+  strcat(sdDataLine, electricalConductivityArr);
+  strcat(sdDataLine, delimiterArr);
+  strcat(sdDataLine, temperatureArr);
+  strcat(sdDataLine, delimiterArr);
   DPRINTLN();
   DPRINTLN("Sensor response in concatenated array");
   DPRINTLN("-------------------------------------");
-  DPRINTLN(measurementfileLine);
+  DPRINTLN(sdDataLine);
   DPRINTLN("-------------------------------------");
   DPRINTLN();
 }
@@ -290,23 +350,49 @@ void showParseDataChar() {
 
 //------------------------------------------------------------------------------
 
-void sd1write() {
+void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* timeData, char* data, bool header) {
 
-}
+  wdt_reset();
 
-//------------------------------------------------------------------------------
+  DPRINTLN("begin sdWrite()");
 
-void getDateAndTime() {
+  for (; !sd.begin(SD_CS);) {  // This for loop for some reason stops Controllino's RTC until card is inserted!!!!!!
 
-  thisYear = Controllino_GetYear(); thisYear = thisYear + 2000;
-  thisMonth = Controllino_GetMonth();
-  thisDay = Controllino_GetDay();
-  thisHour = Controllino_GetHour();
-  thisMinute = Controllino_GetMinute();
-  thisSecond = Controllino_GetSecond();
+    wdt_reset();
 
-  sprintf(dateAndTimeData, ("%04d-%02d-%02dT%02d:%02d:%02d"), thisYear, thisMonth, thisDay, thisHour, thisMinute, thisSecond);
-//  sprintf(measurementfileName, ("%02d-%02d.csv"), thisMonth, thisDay);
-//  sprintf(logfileName, ("%02d-%02dlog.csv"), thisMonth, thisDay);
-//  sprintf(dirName, ("/%02d-%02d"), thisYear, thisMonth);
+    DPRINTLN("sdWrite(): SD not found!");
+
+    if (millis() > startsdCardInitializeDelay + sdCardInitializeDelay) {
+      sd.begin(SD_CS);
+      startsdCardInitializeDelay = millis();
+    }
+  }
+
+  if (!sd.exists(dirName)) {
+    if (!sd.mkdir(dirName)) {
+      sd.errorExit("sd.mkdir(sdLogDirName)");
+    }
+  }
+
+  // make /dirName the default directory for sd
+  if (!sd.chdir(dirName)) {
+    sd.errorExit("sd.chdir(dirName)");
+  }
+
+  //open file within Folder
+  if (header) {
+    if (!sdFile.open(fileName, O_RDWR | O_CREAT)) {
+      sd.errorExit("sdFile.open");
+    }
+  } else {
+    if (!sdFile.open(fileName, O_RDWR | O_CREAT | O_AT_END)) {
+      sd.errorExit("sdFile.open");
+    }
+  }
+
+  if (! (sdFile.println(data)) ) {
+    sd.errorExit("println(data)");
+  }
+
+  sdFile.close();
 }
