@@ -41,7 +41,7 @@ bool headerLine = false;
 char sdMeasurementFileName[10]; // space for MM-DD.csv, plus the null char terminator
 char sdLogFileName[13]; // space for MM-DDlog.csv, plus the null char terminator
 
-char sdMeasurementDirName[7]; // space for /YY-MM, plus the null char terminator
+char sdMeasurementDirName[10]; // space for /YY-MM, plus the null char terminator
 char sdLogDirName[4] = {"log"};
 char sdDataLine[304]; // 20 + 6 * 44 + 20 = 304
 
@@ -278,8 +278,8 @@ void getDateAndTime() {
 }
 
 //------------------------------------------------------------------------------
-
-void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
+/*
+  void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
 
   // void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* timeData, char* data, bool header)
 
@@ -320,8 +320,8 @@ void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data,
   }
 
   sdFile.close();
-}
-
+  }
+*/
 //------------------------------------------------------------------------------
 
 
@@ -338,7 +338,7 @@ void setup() {
   }
 
   Controllino_RTC_init(0);
-  // Controllino_SetTimeDate(16, 5, 5, 20, 20, 41, 00); // set initial values to the RTC chip
+  // Controllino_SetTimeDate(21, 4, 5, 20, 23, 15, 00); // set initial values to the RTC chip
   // (Day of the month, Day of the week, Month, Year, Hour, Minute, Second)
 
   getDateAndTime();
@@ -411,59 +411,89 @@ void loop() {
 
   char beginRoundTime[20];
   char endRoundTime[20];
+  int8_t rtcMinute;
+
+  rtcMinute = Controllino_GetMinute();
+
+  if (rtcMinute == 0 || rtcMinute == 30) {
+    getDateAndTime();
+    strcpy(beginRoundTime, dateAndTimeData);
+
+    for (int16_t repeats = 0; repeats < 40; repeats++) {
+      sensor0.sensorGetReading();
+      sensor1.sensorGetReading();
+      sensor2.sensorGetReading();
+      sensor3.sensorGetReading();
+      sensor4.sensorGetReading();
+      sensor5.sensorGetReading();
+    }
+
+    getDateAndTime();
+
+    strcpy(endRoundTime, dateAndTimeData);
+
+    strcpy(sdDataLine, beginRoundTime);
+    strcat(sdDataLine, delimiter);
+    strcat(sdDataLine, endRoundTime);
+    strcat(sdDataLine, delimiter);
+
+    char * measurementDataBuffer;
+    measurementDataBuffer = sensor0.sensorGetMeasurement();
+    strcat(sdDataLine, measurementDataBuffer);
+    strcat(sdDataLine, delimiter);
+
+    measurementDataBuffer = sensor1.sensorGetMeasurement();
+    strcat(sdDataLine, measurementDataBuffer);
+    strcat(sdDataLine, delimiter);
+
+    measurementDataBuffer = sensor2.sensorGetMeasurement();
+    strcat(sdDataLine, measurementDataBuffer);
+    strcat(sdDataLine, delimiter);
+
+    measurementDataBuffer = sensor3.sensorGetMeasurement();
+    strcat(sdDataLine, measurementDataBuffer);
+    strcat(sdDataLine, delimiter);
+
+    measurementDataBuffer = sensor4.sensorGetMeasurement();
+    strcat(sdDataLine, measurementDataBuffer);
+    strcat(sdDataLine, delimiter);
+
+    measurementDataBuffer = sensor5.sensorGetMeasurement();
+    strcat(sdDataLine, measurementDataBuffer);
+    free (measurementDataBuffer);
+
+    DPRINTLN(sdDataLine);
 
 
-  getDateAndTime();
-  strcpy(beginRoundTime, dateAndTimeData);
+    if (!sdFat.begin(SD_CS)) {
+      sdFat.errorExit("sd.begin(SD_CS)");
+    }
 
-  for (int16_t repeats = 0; repeats < 2; repeats++) {
-    sensor0.sensorGetReading();
-    sensor1.sensorGetReading();
-    sensor2.sensorGetReading();
-    sensor3.sensorGetReading();
-    sensor4.sensorGetReading();
-    sensor5.sensorGetReading();
+    if (!sdFat.exists(sdMeasurementDirName)) {
+      if (!sdFat.mkdir(sdMeasurementDirName)) {
+        sdFat.errorExit("sd.mkdir");
+      }
+    }
+
+    // make /dirName the default directory for sd
+    if (!sdFat.chdir(sdMeasurementDirName)) {
+      sdFat.errorExit("sd.chdir");
+    }
+
+    //open file within Folder
+    if (!sdMeasurementFile.open(sdMeasurementFileName, O_RDWR | O_CREAT | O_AT_END)) {
+      sdFat.errorExit("sdFile.open");
+    }
+
+    if (! (sdMeasurementFile.println(sdDataLine)) ) {
+      sdFat.errorExit("println");
+    }
+
+    sdMeasurementFile.close();
+
+    for (int8_t i = 0; i < 12; i++) {
+      wdt_reset();
+      delay(5000);
+    }
   }
-
-  getDateAndTime();
-  strcpy(endRoundTime, dateAndTimeData);
-
-  strcpy(sdDataLine, beginRoundTime);
-  strcat(sdDataLine, delimiter);
-  strcat(sdDataLine, endRoundTime);
-  strcat(sdDataLine, delimiter);
-
-  char * measurementDataBuffer;
-  measurementDataBuffer = sensor0.sensorGetMeasurement();
-  strcat(sdDataLine, measurementDataBuffer);
-  strcat(sdDataLine, delimiter);
-
-  measurementDataBuffer = sensor1.sensorGetMeasurement();
-  strcat(sdDataLine, measurementDataBuffer);
-  strcat(sdDataLine, delimiter);
-
-  measurementDataBuffer = sensor2.sensorGetMeasurement();
-  strcat(sdDataLine, measurementDataBuffer);
-  strcat(sdDataLine, delimiter);
-
-  measurementDataBuffer = sensor3.sensorGetMeasurement();
-  strcat(sdDataLine, measurementDataBuffer);
-  strcat(sdDataLine, delimiter);
-
-  measurementDataBuffer = sensor4.sensorGetMeasurement();
-  strcat(sdDataLine, measurementDataBuffer);
-  strcat(sdDataLine, delimiter);
-
-  measurementDataBuffer = sensor5.sensorGetMeasurement();
-  strcat(sdDataLine, measurementDataBuffer);
-  free (measurementDataBuffer);
-
-  //headerLine = false;
-  //sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, sdDataLine, headerLine);
-
-  DPRINTLN(sdDataLine);
-
-
-  delay(5000);
-
 }
