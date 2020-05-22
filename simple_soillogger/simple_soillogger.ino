@@ -36,11 +36,12 @@ SdFile sdLogFile;
 /*
    ToDo: attach interrupt to SD card eject and stop everything until the card is back
    Currently the watchdog keeps restarting the code until SD card operations succeed.
+   On the other hand, reading digital pin before opening file should be enough,
+   especially because interrupts are disabled during sensor readings.
 */
 
 
 bool headerLine = false;
-
 
 char sdMeasurementFileName[10]; // space for MM-DD.csv, plus the null char terminator
 char sdLogFileName[13]; // space for MM-DDlog.csv, plus the null char terminator
@@ -53,6 +54,7 @@ char delimiter[2] = {','};
 
 
 //------------------------------------------------------------------------------
+// SD card errors:
 // print error msg, any SD error codes, and halt.
 // store messages in flash
 #define errorExit(msg) errorHalt(F(msg))
@@ -75,15 +77,16 @@ class Sensor {
       sensorAddress = addressInt;
     }
     char* response;
-    char* measurementBuffer = (char*) malloc (44); // [44];
+    char* measurementBuffer = (char*) malloc (44);
 
     /*------------------------------------------------------------------------------
-      Function calls for single sensor reading, data parsing, and 
+      Function calls for single sensor reading, data parsing, and
       statistic calculation.
       ------------------------------------------------------------------------------
     */
     void sensorGetReading() {
       wdt_reset();
+      
       sensorGetResponse();
       if (response != NULL && response[0] != '\0') {
         strcpy(parserBuffer, response);
@@ -113,7 +116,7 @@ class Sensor {
       */
 
       char integerBuffer[10];
-      char measurementValueBuffer[6];
+      char measurementValueBuffer[10];//6];
 
       itoa(sensorAddress, integerBuffer, 10);
       strcpy(measurementBuffer, integerBuffer);
@@ -158,6 +161,8 @@ class Sensor {
       return measurementBuffer;
     }
 
+    //------------------------------------------------------------------------------
+
   private:
 
     int8_t responseAddress;
@@ -181,7 +186,6 @@ class Sensor {
       ------------------------------------------------------------------------------
     */
     void sensorGetResponse() {
-
       wdt_reset();
 
       char service_request_query_M[10];
@@ -191,7 +195,7 @@ class Sensor {
       //      DPRINTLN(service_request_query_M);
 
       char* service_request = sdi_serial_connection.sdi_query(service_request_query_M, responseWaitMs);
-      // the time  above is to wait for service_request_complete
+      // the responseWaitMs is to wait for service_request_complete
 
       char* service_request_complete = sdi_serial_connection.wait_for_response(responseWaitMs);
       // will return once it gets a response
@@ -213,6 +217,8 @@ class Sensor {
       ------------------------------------------------------------------------------
     */
     void sensorParseData() {
+      wdt_reset();
+      
       char * strtokIndx; // this is used by strtok() as an index
 
       strtokIndx = strtok(parserBuffer, "+");     // get the first part - the address
@@ -247,6 +253,8 @@ class Sensor {
       ------------------------------------------------------------------------------
     */
     void sensorStatistics() {
+      wdt_reset();
+      
       dielectricPermittivityStat.add(dielectricPermittivity);
       electricalConductivityStat.add(electricalConductivity);
       temperatureStat.add(temperature);
@@ -294,6 +302,7 @@ Sensor sensorArray[6] = {sensor0, sensor1, sensor2, sensor3, sensor4, sensor5};
   ------------------------------------------------------------------------------
 */
 void getDateAndTime() {
+  wdt_reset();
 
   uint16_t thisYear;
   int8_t thisMonth, thisDay, thisHour, thisMinute, thisSecond;
@@ -318,10 +327,9 @@ void getDateAndTime() {
 */
 /*
   void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
-
+    wdt_reset();
+  
   // void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* timeData, char* data, bool header)
-
-  wdt_reset();
 
   DPRINTLN("begin sdWrite()");
 
@@ -398,6 +406,7 @@ void setup() {
   // writing header line to data file
   //----------------------------------------
   /*
+    wdt_reset();
     sprintf(sdDataLine, "Start time,End time");
     for (int8_t i = 0; i < sizeof sensorArray / sizeof sensorArray[0]; i++) {
       char headers[80] = {"Address,DeP Mean,Dep StDev,EC Mean,EC StDev,Temp Mean, Temp StDev, Measurements"};
@@ -414,7 +423,7 @@ void setup() {
     //----------------------------------------
     // writing system start line to log file
     //----------------------------------------
-
+    wdt_reset();
     strcpy(sdDataLine, dateAndTimeData);
     strcat(sdDataLine, delimiter);
     strcat(sdDataLine, "Hello world. I start now.");
@@ -436,9 +445,12 @@ void setup() {
     sdWrite(sdFat, sdLogDirName, sdLogFile, sdLogFileName, sdDataLine, headerLine);
     //----------------------------------------
   */
+  wdt_reset();
   delay(3000);
   // startup delay to allow sensors to powerup
   // and output DDI serial strings
+
+  // ToDo: Few rounds of single measurements to check that all sensors are OK.
 
 }
 
@@ -454,7 +466,6 @@ void setup() {
   ------------------------------------------------------------------------------
 */
 void loop() {
-
   wdt_reset();
 
   char beginRoundTime[20];
@@ -463,12 +474,14 @@ void loop() {
 
   rtcMinute = Controllino_GetMinute();
 
-  if (rtcMinute == 0 || rtcMinute == 30) {
+  if (rtcMinute == 0 || rtcMinute == 10|| rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50) {
 
     getDateAndTime();
     strcpy(beginRoundTime, dateAndTimeData);
 
     for (int16_t repeats = 0; repeats < measurementsInRound; repeats++) {
+      wdt_reset();
+      
       sensor0.sensorGetReading();
       sensor1.sensorGetReading();
       sensor2.sensorGetReading();
@@ -476,7 +489,8 @@ void loop() {
       sensor4.sensorGetReading();
       sensor5.sensorGetReading();
     }
-
+    
+    wdt_reset();
     getDateAndTime();
     strcpy(endRoundTime, dateAndTimeData);
 
@@ -512,7 +526,7 @@ void loop() {
 
     DPRINTLN(sdDataLine);
 
-
+    wdt_reset();
     if (!sdFat.begin(SD_CS)) {
       sdFat.errorExit("sd.begin(SD_CS)");
     }
