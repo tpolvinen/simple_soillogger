@@ -16,7 +16,7 @@
 #include <Statistic.h>
 
 
-const int16_t measurementRoundNumber = 20;
+const int16_t measurementsInRound = 40;
 
 #define DATALINE_PIN CONTROLLINO_D0
 // Choose a pin that supports interupts
@@ -33,7 +33,11 @@ const uint8_t SD_CS = 53;  // chip select for SD card
 SdFile sdMeasurementFile;
 SdFile sdLogFile;
 
-// ToDo: attach interrupt to SD card eject and stop everything until the card is back
+/*
+   ToDo: attach interrupt to SD card eject and stop everything until the card is back
+   Currently the watchdog keeps restarting the code until SD card operations succeed.
+*/
+
 
 bool headerLine = false;
 
@@ -55,13 +59,12 @@ char delimiter[2] = {','};
 #define initError(msg) initErrorHalt(F(msg))
 //------------------------------------------------------------------------------
 
-
-//------------------------------------------------------------------------------
-// Sensor object for making single measurement readings (responses)
-// and to keep track of consecutive readings in measurement rounds.
-// Statistics are used for the measurement round end results.
-//------------------------------------------------------------------------------
-
+/*------------------------------------------------------------------------------
+   Sensor object that makes single measurement readings (responses),
+   calculates final measurement round values,
+   and concatenates values to char array for saving.
+  ------------------------------------------------------------------------------
+*/
 class Sensor {
     int8_t sensorAddress;
     int16_t responseWaitMs = 1000;
@@ -74,7 +77,12 @@ class Sensor {
     char* response;
     char* measurementBuffer = (char*) malloc (44); // [44];
 
-    void sensorGetReading() { // to get single sensor response
+    /*------------------------------------------------------------------------------
+      Function calls for single sensor reading, data parsing, and 
+      statistic calculation.
+      ------------------------------------------------------------------------------
+    */
+    void sensorGetReading() {
       wdt_reset();
       sensorGetResponse();
       if (response != NULL && response[0] != '\0') {
@@ -86,17 +94,22 @@ class Sensor {
       }
     }
 
-    char * sensorGetMeasurement() { // to get a calculated measurement from a number of sensor responses
+    /*------------------------------------------------------------------------------
+      Returns a final measurement from a number of sensor responses
+      in a character array, calculated averages and standard deviations
+      ------------------------------------------------------------------------------
+    */
+    char * sensorGetMeasurement() { //
       wdt_reset();
 
       /*
-        ToDo: put the statistic product variables to an array and make this neat!
-                    dielectricPermittivityMean,
-                    dielectricPermittivitypop_stdev,
-                    electricalConductivityMean,
-                    electricalConductivitypop_stdev,
-                    temperatureMean,
-                    temperaturepop_stdev
+         ToDo: put the final statistic variables to an array and make this neat!
+                     dielectricPermittivityMean,
+                     dielectricPermittivitypop_stdev,
+                     electricalConductivityMean,
+                     electricalConductivitypop_stdev,
+                     temperatureMean,
+                     temperaturepop_stdev
       */
 
       char integerBuffer[10];
@@ -163,6 +176,10 @@ class Sensor {
     Statistic temperatureStat;
     uint32_t readingCount;
 
+    /*------------------------------------------------------------------------------
+      Writes single response from one sensor to a char array.
+      ------------------------------------------------------------------------------
+    */
     void sensorGetResponse() {
 
       wdt_reset();
@@ -191,6 +208,10 @@ class Sensor {
       //      DPRINTLN(response);
     }
 
+    /*------------------------------------------------------------------------------
+      Parses single response from a char array to numeric variables.
+      ------------------------------------------------------------------------------
+    */
     void sensorParseData() {
       char * strtokIndx; // this is used by strtok() as an index
 
@@ -219,6 +240,12 @@ class Sensor {
       //      DPRINTLN(temperature);
     }
 
+    /*------------------------------------------------------------------------------
+      Adds numeric variables from a single response to statistics objects,
+      and calculates a running average, standard deviation,
+      and number of responses.
+      ------------------------------------------------------------------------------
+    */
     void sensorStatistics() {
       dielectricPermittivityStat.add(dielectricPermittivity);
       electricalConductivityStat.add(electricalConductivity);
@@ -248,6 +275,9 @@ class Sensor {
     }
 };
 
+/*
+   ToDo: Can these sensor objects be spawned automatically?
+*/
 Sensor sensor0(0);
 Sensor sensor1(1);
 Sensor sensor2(2);
@@ -257,8 +287,12 @@ Sensor sensor5(5);
 
 Sensor sensorArray[6] = {sensor0, sensor1, sensor2, sensor3, sensor4, sensor5};
 
-//------------------------------------------------------------------------------
-
+/*------------------------------------------------------------------------------
+  Gets RTC time and date and puts them to char arrays,
+  for file and folder naming, and
+  for concatenation with sensor data.
+  ------------------------------------------------------------------------------
+*/
 void getDateAndTime() {
 
   uint16_t thisYear;
@@ -277,7 +311,11 @@ void getDateAndTime() {
   sprintf(sdMeasurementDirName, ("/%02d-%02d"), thisYear, thisMonth);
 }
 
-//------------------------------------------------------------------------------
+/*------------------------------------------------------------------------------
+   Writes a data char array to SD card.
+   Currently not working right and commented out. Simple functionality in loop().
+   ------------------------------------------------------------------------------
+*/
 /*
   void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
 
@@ -322,9 +360,12 @@ void getDateAndTime() {
   sdFile.close();
   }
 */
-//------------------------------------------------------------------------------
 
-
+/*------------------------------------------------------------------------------
+  Sets watchdog timer, begins serial connection, RTC intialisation,
+  and begins data and log files, writing a start message and a header line.
+  ------------------------------------------------------------------------------
+*/
 void setup() {
 
   wdt_disable();  // Disable the watchdog and wait for more than 2 seconds
@@ -401,10 +442,17 @@ void setup() {
 
 }
 
+/*------------------------------------------------------------------------------
+   Checks for RTC for set minutes to start measurement round,
+   gets readings from sensors for set repeats per round,
+   concatenates round's start and end time, calculated measurement values, and
+   writes measurement round's data to SD card.
+   Finally, delays for a minute to avoid re-measurement on the same minute.
 
-
-//------------------------------------------------------------------------------
-
+   ToDo: Concatenation functionality to a separate function.
+   ToDo: SD card functionality to a separate function or class.
+  ------------------------------------------------------------------------------
+*/
 void loop() {
 
   wdt_reset();
@@ -416,10 +464,11 @@ void loop() {
   rtcMinute = Controllino_GetMinute();
 
   if (rtcMinute == 0 || rtcMinute == 30) {
+
     getDateAndTime();
     strcpy(beginRoundTime, dateAndTimeData);
 
-    for (int16_t repeats = 0; repeats < 40; repeats++) {
+    for (int16_t repeats = 0; repeats < measurementsInRound; repeats++) {
       sensor0.sensorGetReading();
       sensor1.sensorGetReading();
       sensor2.sensorGetReading();
@@ -429,7 +478,6 @@ void loop() {
     }
 
     getDateAndTime();
-
     strcpy(endRoundTime, dateAndTimeData);
 
     strcpy(sdDataLine, beginRoundTime);
