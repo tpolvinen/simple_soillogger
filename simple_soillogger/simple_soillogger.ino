@@ -16,7 +16,8 @@
 #include <Statistic.h>
 
 
-const int16_t measurementsInRound = 40;
+const int16_t measurementsInRound = 20;
+int8_t latestRoundStartMinute;
 
 #define DATALINE_PIN CONTROLLINO_D0
 // Choose a pin that supports interupts
@@ -38,6 +39,7 @@ SdFile sdLogFile;
    Currently the watchdog keeps restarting the code until SD card operations succeed.
    On the other hand, reading digital pin before opening file should be enough,
    especially because interrupts are disabled during sensor readings.
+   ToDo: make sdDataLine[1000] smaller.
 */
 
 
@@ -48,7 +50,7 @@ char sdLogFileName[13]; // space for MM-DDlog.csv, plus the null char terminator
 
 char sdMeasurementDirName[10]; // space for /YY-MM, plus the null char terminator
 char sdLogDirName[4] = {"log"};
-char sdDataLine[304]; // 20 + 6 * 44 + 20 = 304
+char sdDataLine[1000]; // Could be smaller, but we've got memory. For now... //304]; // 20 + 6 * 44 + 20 = 304
 
 char delimiter[2] = {','};
 
@@ -82,11 +84,12 @@ class Sensor {
     /*------------------------------------------------------------------------------
       Function calls for single sensor reading, data parsing, and
       statistic calculation.
+      This works towards the final measurement data. 
       ------------------------------------------------------------------------------
     */
     void sensorGetReading() {
       wdt_reset();
-      
+
       sensorGetResponse();
       if (response != NULL && response[0] != '\0') {
         strcpy(parserBuffer, response);
@@ -98,8 +101,9 @@ class Sensor {
     }
 
     /*------------------------------------------------------------------------------
-      Returns a final measurement from a number of sensor responses
-      in a character array, calculated averages and standard deviations
+      Returns a final measurement calculated from a number of sensor responses
+      in a character array, w/ calculated averages, standard deviations, and
+      number of single readings used for calculations.
       ------------------------------------------------------------------------------
     */
     char * sensorGetMeasurement() { //
@@ -218,7 +222,7 @@ class Sensor {
     */
     void sensorParseData() {
       wdt_reset();
-      
+
       char * strtokIndx; // this is used by strtok() as an index
 
       strtokIndx = strtok(parserBuffer, "+");     // get the first part - the address
@@ -254,7 +258,7 @@ class Sensor {
     */
     void sensorStatistics() {
       wdt_reset();
-      
+
       dielectricPermittivityStat.add(dielectricPermittivity);
       electricalConductivityStat.add(electricalConductivity);
       temperatureStat.add(temperature);
@@ -283,9 +287,6 @@ class Sensor {
     }
 };
 
-/*
-   ToDo: Can these sensor objects be spawned automatically?
-*/
 Sensor sensor0(0);
 Sensor sensor1(1);
 Sensor sensor2(2);
@@ -322,23 +323,19 @@ void getDateAndTime() {
 
 /*------------------------------------------------------------------------------
    Writes a data char array to SD card.
-   Currently not working right and commented out. Simple functionality in loop().
    ------------------------------------------------------------------------------
 */
-/*
-  void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
-    wdt_reset();
-  
-  // void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* timeData, char* data, bool header)
 
-  DPRINTLN("begin sdWrite()");
+void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
+  wdt_reset();
+
+  DPRINTLN("Begin sdWrite()");
 
   if (!sd.begin(SD_CS)) {
     sd.errorExit("sd.begin(SD_CS)");
-    DPRINTLN("sdWrite(): SD not found!");
   }
 
-  DPRINTLN(dirName);
+  DPRINT("DIR: "); DPRINTLN(dirName);
   if (!sd.exists(dirName)) {
     if (!sd.mkdir(dirName)) {
       sd.errorExit("sd.mkdir(dirName)");
@@ -349,7 +346,7 @@ void getDateAndTime() {
   if (!sd.chdir(dirName)) {
     sd.errorExit("sd.chdir(dirName)");
   }
-
+  DPRINT("FILE: "); DPRINTLN(fileName);
   //open file within Folder
   if (header) {
     if (!sdFile.open(fileName, O_RDWR | O_CREAT)) {
@@ -360,14 +357,14 @@ void getDateAndTime() {
       sd.errorExit("sdFile.open");
     }
   }
-
+  DPRINT("DATA: "); DPRINTLN(data);
   if (! (sdFile.println(data)) ) {
     sd.errorExit("println(data)");
   }
 
   sdFile.close();
-  }
-*/
+}
+
 
 /*------------------------------------------------------------------------------
   Sets watchdog timer, begins serial connection, RTC intialisation,
@@ -375,6 +372,14 @@ void getDateAndTime() {
   ------------------------------------------------------------------------------
 */
 void setup() {
+
+  /*
+     ToDo: startup protocol:
+      connect sensors one by one:
+      connect, delay for 3000 (power up and send out DDI serial strings)
+      check sensor with measurement commands , if response OK, light up led or something
+      next one!
+  */
 
   wdt_disable();  // Disable the watchdog and wait for more than 2 seconds
   delay(3000);  // With this the Arduino doesn't keep resetting infinitely in case of wrong configuration
@@ -386,12 +391,21 @@ void setup() {
     delay(10);
   }
 
+  wdt_reset();
+  delay(3000);
+  /* startup delay to allow sensors to powerup, and
+      output DDI serial strings
+  */
+
+  /*
+      ToDo: Few rounds of single measurements to check that all sensors are OK.
+  */
+
   Controllino_RTC_init(0);
   // Controllino_SetTimeDate(21, 4, 5, 20, 23, 15, 00); // set initial values to the RTC chip
   // (Day of the month, Day of the week, Month, Year, Hour, Minute, Second)
-
+  delay(500);
   getDateAndTime();
-
 
   DPRINTLN();
   DPRINTLN("------------------------------------------------------------");
@@ -400,57 +414,47 @@ void setup() {
   DPRINTLN("           DEBUG PRINTING TO SERIAL IS ON!");
   DPRINT("                 ");
   DPRINTLN(dateAndTimeData);
-
+  DPRINT("sdMeasurementDirName:  ");
+  DPRINTLN(sdMeasurementDirName);
+  DPRINT("sdMeasurementFileName: ");
+  DPRINTLN(sdMeasurementFileName);
+  DPRINT("sdLogDirName:          ");
+  DPRINTLN(sdLogDirName);
+  DPRINT("sdLogFileName:         ");
+  DPRINTLN(sdLogFileName);
+  DPRINTLN("------------------------------------------------------------");
 
   //----------------------------------------
   // writing header line to data file
   //----------------------------------------
-  /*
-    wdt_reset();
-    sprintf(sdDataLine, "Start time,End time");
-    for (int8_t i = 0; i < sizeof sensorArray / sizeof sensorArray[0]; i++) {
-      char headers[80] = {"Address,DeP Mean,Dep StDev,EC Mean,EC StDev,Temp Mean, Temp StDev, Measurements"};
-      strcat(sdDataLine, headers);
-      if (i < (sizeof sensorArray / sizeof sensorArray[0] - 1)) {
-        strcat(sdDataLine, delimiter);
-      }
-    }
-    headerLine = true;
-    sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, sdDataLine, headerLine);
 
-    //----------------------------------------
-
-    //----------------------------------------
-    // writing system start line to log file
-    //----------------------------------------
-    wdt_reset();
-    strcpy(sdDataLine, dateAndTimeData);
-    strcat(sdDataLine, delimiter);
-    strcat(sdDataLine, "Hello world. I start now.");
-
-
-      for (int8_t i = 0; i < sizeof addressArray / sizeof addressArray[0]; i++) {
-      char charAddress[2];
-      itoa(addressArray[i], charAddress, 10);
-      strcat(sdDataLine, charAddress);
-      if (i < (sizeof addressArray / sizeof addressArray[0] - 1)) {
-        strcat(sdDataLine, delimiterArr);
-      }
-      }
-
-
-    DPRINTLN(sdDataLine);
-
-    headerLine = false;
-    sdWrite(sdFat, sdLogDirName, sdLogFile, sdLogFileName, sdDataLine, headerLine);
-    //----------------------------------------
-  */
   wdt_reset();
-  delay(3000);
-  // startup delay to allow sensors to powerup
-  // and output DDI serial strings
+  sprintf(sdDataLine, "Start time,End time,");
+  for (int8_t i = 0; i < sizeof sensorArray / sizeof sensorArray[0]; i++) {
+    strcat(sdDataLine, "Address,DeP Mean,Dep StDev,EC Mean,EC StDev,Temp Mean, Temp StDev, Measurements");
+    if (i < (sizeof sensorArray / sizeof sensorArray[0] - 1)) {
+      strcat(sdDataLine, delimiter);
+    }
+  }
 
-  // ToDo: Few rounds of single measurements to check that all sensors are OK.
+  headerLine = true;
+  sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, sdDataLine, headerLine);
+
+  //----------------------------------------
+  // writing system start line to log file
+  //----------------------------------------
+  wdt_reset();
+  strcpy(sdDataLine, dateAndTimeData);
+  strcat(sdDataLine, delimiter);
+  strcat(sdDataLine, "Hello world. I start now. Number of sensors:,");
+  int8_t i;
+  char sensorNumber[4];
+  for (i = 1; i < sizeof sensorArray / sizeof sensorArray[0]; i++);
+  sprintf(sensorNumber, "%d", i);
+  strcat(sdDataLine, sensorNumber);
+
+  headerLine = false;
+  sdWrite(sdFat, sdLogDirName, sdLogFile, sdLogFileName, sdDataLine, headerLine);
 
 }
 
@@ -458,11 +462,7 @@ void setup() {
    Checks for RTC for set minutes to start measurement round,
    gets readings from sensors for set repeats per round,
    concatenates round's start and end time, calculated measurement values, and
-   writes measurement round's data to SD card.
-   Finally, delays for a minute to avoid re-measurement on the same minute.
-
-   ToDo: Concatenation functionality to a separate function.
-   ToDo: SD card functionality to a separate function or class.
+   calls sdwrite() to save measurement round's data to SD card.
   ------------------------------------------------------------------------------
 */
 void loop() {
@@ -474,14 +474,24 @@ void loop() {
 
   rtcMinute = Controllino_GetMinute();
 
-  if (rtcMinute == 0 || rtcMinute == 10|| rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50) {
+  /*
+     ToDo: bool minuteChecker(rtcMinute) function that iterates over array of int8_t minutes,
+     returns TRUE if any match to current rtcMinute. Then put minuteChecker(rtcMinute) function
+     call to if() below here.
+  */
 
+  if (latestRoundStartMinute != rtcMinute && (rtcMinute == 0 || rtcMinute == 10 || rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50)) {
+    latestRoundStartMinute = rtcMinute;
     getDateAndTime();
     strcpy(beginRoundTime, dateAndTimeData);
 
     for (int16_t repeats = 0; repeats < measurementsInRound; repeats++) {
       wdt_reset();
-      
+
+      /*
+         ToDo: perhaps iterate over sensorArray[] to go through these?
+      */
+
       sensor0.sensorGetReading();
       sensor1.sensorGetReading();
       sensor2.sensorGetReading();
@@ -489,7 +499,7 @@ void loop() {
       sensor4.sensorGetReading();
       sensor5.sensorGetReading();
     }
-    
+
     wdt_reset();
     getDateAndTime();
     strcpy(endRoundTime, dateAndTimeData);
@@ -524,38 +534,8 @@ void loop() {
     strcat(sdDataLine, measurementDataBuffer);
     free (measurementDataBuffer);
 
-    DPRINTLN(sdDataLine);
+    headerLine = false;
+    sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, sdDataLine, headerLine);
 
-    wdt_reset();
-    if (!sdFat.begin(SD_CS)) {
-      sdFat.errorExit("sd.begin(SD_CS)");
-    }
-
-    if (!sdFat.exists(sdMeasurementDirName)) {
-      if (!sdFat.mkdir(sdMeasurementDirName)) {
-        sdFat.errorExit("sd.mkdir");
-      }
-    }
-
-    // make /dirName the default directory for sd
-    if (!sdFat.chdir(sdMeasurementDirName)) {
-      sdFat.errorExit("sd.chdir");
-    }
-
-    //open file within Folder
-    if (!sdMeasurementFile.open(sdMeasurementFileName, O_RDWR | O_CREAT | O_AT_END)) {
-      sdFat.errorExit("sdFile.open");
-    }
-
-    if (! (sdMeasurementFile.println(sdDataLine)) ) {
-      sdFat.errorExit("println");
-    }
-
-    sdMeasurementFile.close();
-
-    for (int8_t i = 0; i < 12; i++) {
-      wdt_reset();
-      delay(5000);
-    }
   }
 }
