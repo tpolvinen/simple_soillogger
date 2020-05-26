@@ -19,6 +19,8 @@
 const int16_t measurementsInRound = 20;
 int8_t latestRoundStartMinute;
 
+#define SDERRORLED CONTROLLINO_D23
+
 #define DATALINE_PIN CONTROLLINO_D0
 // Choose a pin that supports interupts
 // Digital 0 on Controllino = pin 2 on Arduino Mega
@@ -84,7 +86,7 @@ class Sensor {
     /*------------------------------------------------------------------------------
       Function calls for single sensor reading, data parsing, and
       statistic calculation.
-      This works towards the final measurement data. 
+      This works towards the final measurement data.
       ------------------------------------------------------------------------------
     */
     void sensorGetReading() {
@@ -323,7 +325,7 @@ void getDateAndTime() {
 
 /*------------------------------------------------------------------------------
    Writes a data char array to SD card.
-   ------------------------------------------------------------------------------
+  ------------------------------------------------------------------------------
 */
 
 void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data, bool header) {
@@ -332,37 +334,59 @@ void sdWrite(SdFat sd, char* dirName, SdFile sdFile, char* fileName, char* data,
   DPRINTLN("Begin sdWrite()");
 
   if (!sd.begin(SD_CS)) {
+    errorBlink(SDERRORLED);
     sd.errorExit("sd.begin(SD_CS)");
   }
 
   DPRINT("DIR: "); DPRINTLN(dirName);
   if (!sd.exists(dirName)) {
     if (!sd.mkdir(dirName)) {
+      errorBlink(SDERRORLED);
       sd.errorExit("sd.mkdir(dirName)");
     }
   }
 
   // make /dirName the default directory for sd
   if (!sd.chdir(dirName)) {
+    errorBlink(SDERRORLED);
     sd.errorExit("sd.chdir(dirName)");
   }
   DPRINT("FILE: "); DPRINTLN(fileName);
   //open file within Folder
   if (header) {
     if (!sdFile.open(fileName, O_RDWR | O_CREAT)) {
+      errorBlink(SDERRORLED);
       sd.errorExit("sdFile.open");
     }
   } else {
     if (!sdFile.open(fileName, O_RDWR | O_CREAT | O_AT_END)) {
+      errorBlink(SDERRORLED);
       sd.errorExit("sdFile.open");
     }
   }
   DPRINT("DATA: "); DPRINTLN(data);
   if (! (sdFile.println(data)) ) {
+    errorBlink(SDERRORLED);
     sd.errorExit("println(data)");
   }
 
   sdFile.close();
+}
+
+/*------------------------------------------------------------------------------
+   Blinks D23 led 10 times if SD card fails.
+  ------------------------------------------------------------------------------
+*/
+void errorBlink(byte led) {
+  int8_t blinkCount = 0;
+  while (blinkCount < 10) {
+    wdt_reset();
+    digitalWrite(led, HIGH);
+    delay(500);
+    digitalWrite(led, LOW);
+    delay(500);
+    blinkCount++;
+  }
 }
 
 
@@ -384,6 +408,8 @@ void setup() {
   wdt_disable();  // Disable the watchdog and wait for more than 2 seconds
   delay(3000);  // With this the Arduino doesn't keep resetting infinitely in case of wrong configuration
   wdt_enable(WDTO_8S);
+
+  pinMode(SDERRORLED, OUTPUT);
 
   sdi_serial_connection.begin();
   Serial.begin(9600);
