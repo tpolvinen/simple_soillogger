@@ -16,7 +16,7 @@
 #include <Statistic.h>
 
 
-const int16_t measurementsInRound = 20;
+const int16_t measurementsInRound = 40;
 int8_t latestRoundStartMinute;
 
 #define SDERRORLED CONTROLLINO_D23
@@ -89,7 +89,7 @@ class Sensor {
       This works towards the final measurement data.
       ------------------------------------------------------------------------------
     */
-    void sensorGetReading() {
+    bool sensorGetReading() {
       wdt_reset();
 
       sensorGetResponse();
@@ -99,6 +99,9 @@ class Sensor {
         //        DPRINTLN(parserBuffer);
         sensorParseData();
         sensorStatistics();
+        return true;
+      } else {
+        return false;
       }
     }
 
@@ -123,34 +126,59 @@ class Sensor {
 
       char integerBuffer[10];
       char measurementValueBuffer[10];//6];
+      char noValueBuffer[4] = {"N/A"};
 
       itoa(sensorAddress, integerBuffer, 10);
       strcpy(measurementBuffer, integerBuffer);
       strcat(measurementBuffer, delimiter);
 
-      dtostrf(dielectricPermittivityMean, 5, 2, measurementValueBuffer);
-      strcat(measurementBuffer, measurementValueBuffer);
-      strcat(measurementBuffer, delimiter);
+      if (readingCount == 0) {
 
-      dtostrf(dielectricPermittivitypop_stdev, 5, 2, measurementValueBuffer);
-      strcat(measurementBuffer, measurementValueBuffer);
-      strcat(measurementBuffer, delimiter);
+        strcat(measurementBuffer, noValueBuffer);
+        strcat(measurementBuffer, delimiter);
 
-      dtostrf(electricalConductivityMean, 5, 2, measurementValueBuffer);
-      strcat(measurementBuffer, measurementValueBuffer);
-      strcat(measurementBuffer, delimiter);
+        strcat(measurementBuffer, noValueBuffer);
+        strcat(measurementBuffer, delimiter);
 
-      dtostrf(electricalConductivitypop_stdev, 5, 2, measurementValueBuffer);
-      strcat(measurementBuffer, measurementValueBuffer);
-      strcat(measurementBuffer, delimiter);
+        strcat(measurementBuffer, noValueBuffer);
+        strcat(measurementBuffer, delimiter);
 
-      dtostrf(temperatureMean, 5, 2, measurementValueBuffer);
-      strcat(measurementBuffer, measurementValueBuffer);
-      strcat(measurementBuffer, delimiter);
+        strcat(measurementBuffer, noValueBuffer);
+        strcat(measurementBuffer, delimiter);
 
-      dtostrf(temperaturepop_stdev, 5, 2, measurementValueBuffer);
-      strcat(measurementBuffer, measurementValueBuffer);
-      strcat(measurementBuffer, delimiter);
+        strcat(measurementBuffer, noValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+        strcat(measurementBuffer, noValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+      } else {
+
+        dtostrf(dielectricPermittivityMean, 5, 2, measurementValueBuffer);
+        strcat(measurementBuffer, measurementValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+        dtostrf(dielectricPermittivitypop_stdev, 5, 2, measurementValueBuffer);
+        strcat(measurementBuffer, measurementValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+        dtostrf(electricalConductivityMean, 5, 2, measurementValueBuffer);
+        strcat(measurementBuffer, measurementValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+        dtostrf(electricalConductivitypop_stdev, 5, 2, measurementValueBuffer);
+        strcat(measurementBuffer, measurementValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+        dtostrf(temperatureMean, 5, 2, measurementValueBuffer);
+        strcat(measurementBuffer, measurementValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+        dtostrf(temperaturepop_stdev, 5, 2, measurementValueBuffer);
+        strcat(measurementBuffer, measurementValueBuffer);
+        strcat(measurementBuffer, delimiter);
+
+      }
 
       itoa(readingCount, integerBuffer, 10);
       strcat(measurementBuffer, integerBuffer);
@@ -433,6 +461,18 @@ void setup() {
   delay(500);
   getDateAndTime();
 
+  /*
+    ToDo: perhaps iterate over sensorArray[] to go through these?
+  */
+
+  int8_t respondingSensors = 0;
+  if (sensor0.sensorGetReading()) respondingSensors++;
+  if (sensor1.sensorGetReading()) respondingSensors++;
+  if (sensor2.sensorGetReading()) respondingSensors++;
+  if (sensor3.sensorGetReading()) respondingSensors++;
+  if (sensor4.sensorGetReading()) respondingSensors++;
+  if (sensor5.sensorGetReading()) respondingSensors++;
+
   DPRINTLN();
   DPRINTLN("------------------------------------------------------------");
   DPRINTLN("            Simple Soil Logger starting!");
@@ -440,6 +480,10 @@ void setup() {
   DPRINTLN("           DEBUG PRINTING TO SERIAL IS ON!");
   DPRINT("                 ");
   DPRINTLN(dateAndTimeData);
+  DPRINT("Sensors in program:  ");
+  DPRINTLN(sizeof sensorArray / sizeof sensorArray[0]);
+  DPRINT("Sensors responding:  ");
+  DPRINTLN(respondingSensors);
   DPRINT("sdMeasurementDirName:  ");
   DPRINTLN(sdMeasurementDirName);
   DPRINT("sdMeasurementFileName: ");
@@ -472,11 +516,17 @@ void setup() {
   wdt_reset();
   strcpy(sdDataLine, dateAndTimeData);
   strcat(sdDataLine, delimiter);
-  strcat(sdDataLine, "Hello world. I start now. Number of sensors:,");
+  strcat(sdDataLine, "Hello world. I start now. Number of sensors in program:");
+  strcat(sdDataLine, delimiter);
   int8_t i;
   char sensorNumber[4];
   for (i = 1; i < sizeof sensorArray / sizeof sensorArray[0]; i++);
   sprintf(sensorNumber, "%d", i);
+  strcat(sdDataLine, sensorNumber);
+  strcat(sdDataLine, delimiter);
+  strcat(sdDataLine, "Responding sensors at start:");
+  strcat(sdDataLine, delimiter);
+  sprintf(sensorNumber, "%d", respondingSensors);
   strcat(sdDataLine, sensorNumber);
 
   headerLine = false;
@@ -506,7 +556,7 @@ void loop() {
      call to if() below here.
   */
 
-  if (latestRoundStartMinute != rtcMinute && (rtcMinute == 0 || rtcMinute == 10 || rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50)) {
+  if (latestRoundStartMinute != rtcMinute && ( rtcMinute == 0 || rtcMinute == 30 )) { //rtcMinute == 10 || rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50)) {
     latestRoundStartMinute = rtcMinute;
     getDateAndTime();
     strcpy(beginRoundTime, dateAndTimeData);
