@@ -16,7 +16,7 @@
 #include <Statistic.h>
 
 
-const int16_t measurementsInRound = 40;
+const int16_t measurementsInRound = 5;
 int8_t latestRoundStartMinute;
 
 #define SDERRORLED CONTROLLINO_D23
@@ -56,6 +56,9 @@ char sdDataLine[1000]; // Could be smaller, but we've got memory. For now... //3
 
 char delimiter[2] = {','};
 
+char beginRoundTime[20];
+char endRoundTime[20];
+int8_t rtcMinute;
 
 //------------------------------------------------------------------------------
 // SD card errors:
@@ -184,8 +187,8 @@ class Sensor {
       strcat(measurementBuffer, integerBuffer);
 
 
-      //      DPRINT("measurementBuffer: ");
-      //      DPRINTLN(measurementBuffer);
+      DPRINT("measurementBuffer: ");
+      DPRINTLN(measurementBuffer);
 
       dielectricPermittivityStat.clear();
       electricalConductivityStat.clear();
@@ -532,6 +535,65 @@ void setup() {
   headerLine = false;
   sdWrite(sdFat, sdLogDirName, sdLogFile, sdLogFileName, sdDataLine, headerLine);
 
+  //----------------------------------------
+  // getting measurements from all 6 sensors
+  // writing data line to data file
+  //----------------------------------------
+
+  getDateAndTime();
+
+  rtcMinute = Controllino_GetMinute();
+
+  strcpy(beginRoundTime, dateAndTimeData);
+
+  for (int16_t repeats = 0; repeats < measurementsInRound; repeats++) {
+    wdt_reset();
+
+    sensor0.sensorGetReading();
+    sensor1.sensorGetReading();
+    sensor2.sensorGetReading();
+    sensor3.sensorGetReading();
+    sensor4.sensorGetReading();
+    sensor5.sensorGetReading();
+  }
+
+  wdt_reset();
+  getDateAndTime();
+  strcpy(endRoundTime, dateAndTimeData);
+
+  strcpy(sdDataLine, beginRoundTime);
+  strcat(sdDataLine, delimiter);
+  strcat(sdDataLine, endRoundTime);
+  strcat(sdDataLine, delimiter);
+
+  char * measurementDataBuffer;
+  measurementDataBuffer = sensor0.sensorGetMeasurement();
+  strcat(sdDataLine, measurementDataBuffer);
+  strcat(sdDataLine, delimiter);
+
+  measurementDataBuffer = sensor1.sensorGetMeasurement();
+  strcat(sdDataLine, measurementDataBuffer);
+  strcat(sdDataLine, delimiter);
+
+  measurementDataBuffer = sensor2.sensorGetMeasurement();
+  strcat(sdDataLine, measurementDataBuffer);
+  strcat(sdDataLine, delimiter);
+
+  measurementDataBuffer = sensor3.sensorGetMeasurement();
+  strcat(sdDataLine, measurementDataBuffer);
+  strcat(sdDataLine, delimiter);
+
+  measurementDataBuffer = sensor4.sensorGetMeasurement();
+  strcat(sdDataLine, measurementDataBuffer);
+  strcat(sdDataLine, delimiter);
+
+  measurementDataBuffer = sensor5.sensorGetMeasurement();
+  strcat(sdDataLine, measurementDataBuffer);
+  free (measurementDataBuffer);
+
+  headerLine = false;
+  sdWrite(sdFat, sdMeasurementDirName, sdMeasurementFile, sdMeasurementFileName, sdDataLine, headerLine);
+
 }
 
 /*------------------------------------------------------------------------------
@@ -544,10 +606,6 @@ void setup() {
 void loop() {
   wdt_reset();
 
-  char beginRoundTime[20];
-  char endRoundTime[20];
-  int8_t rtcMinute;
-
   rtcMinute = Controllino_GetMinute();
 
   /*
@@ -556,7 +614,7 @@ void loop() {
      call to if() below here.
   */
 
-  if (latestRoundStartMinute != rtcMinute && ( rtcMinute == 0 || rtcMinute == 30 )) { //rtcMinute == 10 || rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50)) {
+  if (latestRoundStartMinute != rtcMinute && ( rtcMinute == 0 || rtcMinute == 30 )) { // rtcMinute == 10 || rtcMinute == 20 || rtcMinute == 30 || rtcMinute == 40 || rtcMinute == 50)) {
     latestRoundStartMinute = rtcMinute;
     getDateAndTime();
     strcpy(beginRoundTime, dateAndTimeData);
